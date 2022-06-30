@@ -22,8 +22,13 @@ module.exports = {
   solidity: {
     compilers: [
       {
-        version: "0.8.4",
-        settings: {},
+        version: "0.8.15",
+        settings: {
+          optimizer: {
+            enabled: false,
+            runs: 200,
+          },
+        },
       },
     ],
   },
@@ -31,8 +36,8 @@ module.exports = {
     hardhat: {
       forking: {
         url: process.env.POLYGON,
-        //blockNumber: 28443000, // block pinning gives x20 perfromance due to caching as stated on hardhat docs
-        //enabled: false,
+        blockNumber: 30163528, // block pinning gives x20 perfromance due to caching as stated on hardhat docs
+        enabled: true,
       },
     },
     mainnet_polygon: {
@@ -59,7 +64,7 @@ module.exports = {
     },
   },
   gasReporter: {
-    enabled: process.env.REPORT_GAS !== undefined,
+    enabled: false,
     currency: "USD",
   },
   etherscan: {
