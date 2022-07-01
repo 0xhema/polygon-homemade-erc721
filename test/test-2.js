@@ -32,7 +32,6 @@ describe("ERC721", function () {
     maxMint = 5;
     erc721 = await ERC721.deploy(name, symbol, baseURI, maxMint);
     await erc721.deployed();
-    console.log("ether price", parseEther("0.1"));
 
     expect(await erc721.name()).to.equal(name);
     expect(await erc721.symbol()).to.equal(symbol);

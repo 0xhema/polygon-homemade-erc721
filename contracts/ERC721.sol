@@ -68,6 +68,8 @@ contract ERC721 is IERC721, ERC165, Ownable {
   uint8 private immutable _maxMint;
   //price per nft
   uint256 private immutable _pricePerToken = 1e16;
+  bool internal withdrawIsLocked;
+
   // Mapping from token ID to owner address
   mapping(uint256 => address) private _owners;
 
@@ -91,6 +93,8 @@ contract ERC721 is IERC721, ERC165, Ownable {
 
   // Mapping from token id to position in the allTokens array (IERC721-Enumerable)
   mapping(uint256 => uint256) private _allTokensIndex;
+
+  event WithdrawAndLock(bool _withdrawAndLock);
 
   constructor(
     string memory name_,
@@ -123,6 +127,13 @@ contract ERC721 is IERC721, ERC165, Ownable {
     return _balances[owner];
   }
 
+  function withdrawAndLock() external onlyOwner {
+    require(!withdrawIsLocked, "Can only call this function once");
+    withdrawIsLocked = true;
+    payable(owner()).transfer(address(this).balance);
+    emit WithdrawAndLock(withdrawIsLocked);
+  }
+
   function ownerOf(uint256 tokenId)
     public
     view
@@ -152,11 +163,12 @@ contract ERC721 is IERC721, ERC165, Ownable {
   }
 
   function mint(uint256 _numToMint) public payable returns (uint256) {
-    require(_numToMint < _maxMint, "You can mint a maximum of ${_maxMint}");
+    require(_numToMint < _maxMint, "Error: Max supply has been reached");
     require(
       msg.value >= _pricePerToken * _numToMint,
       "Not enough ETH sent, check price"
     );
+    require(!withdrawIsLocked, "Mint is over");
 
     for (uint256 i; i < _numToMint; i++) {
       _withdrawToCredit(msg.sender);
@@ -330,7 +342,6 @@ contract ERC721 is IERC721, ERC165, Ownable {
 
   function _mint(address to, uint256 tokenId) internal virtual {
     if (to == address(0)) revert InvalidInputZeroAddress();
-    console.log("tokenID", tokenId);
     if (_exists(tokenId)) revert TokenAlreadyExists();
 
     _beforeTokenTransfer(address(0), to, tokenId);
@@ -468,32 +479,28 @@ contract ERC721 is IERC721, ERC165, Ownable {
   mapping(address => uint256) credit;
   uint256 dividendPerToken;
   mapping(address => uint256) xDividendPerToken;
-
-  event FundsReceived(uint256 value, uint256 dividendPerToken);
+  event withdrawlMade(address indexed withdrawer, uint256 amount);
 
   receive() external payable {
-    updateDividendPerToken();
+    if (withdrawIsLocked) updateDividendPerToken();
   }
 
   function updateDividendPerToken() internal {
     require(totalSupply() != 0, "No tokens minted");
     dividendPerToken += msg.value / totalSupply();
-    console.log("new dividen per share");
-    //emit FundsReceived(msg.value, dividendPerToken);
   }
 
   function withdraw() external {
     uint256 holderBalance = balanceOf(_msgSender());
     require(holderBalance != 0, "DToken: caller possess no shares");
 
-    uint256 amount = ((dividendPerToken - xDividendPerToken[_msgSender()]) *
-      holderBalance);
-    amount += credit[_msgSender()];
+    uint256 amount = dividendEarned(msg.sender);
     credit[_msgSender()] = 0;
     xDividendPerToken[_msgSender()] = dividendPerToken;
 
     (bool success, ) = payable(_msgSender()).call{ value: amount }("");
     require(success, "DToken: Could not withdraw eth");
+    emit withdrawlMade(msg.sender, amount);
   }
 
   function _withdrawToCredit(address to_) private {
@@ -502,6 +509,15 @@ contract ERC721 is IERC721, ERC165, Ownable {
       recipientBalance;
     credit[to_] += amount;
     xDividendPerToken[to_] = dividendPerToken;
+  }
+
+  function dividendEarned(address _user) public view returns (uint256) {
+    uint256 holderBalance = balanceOf(_user);
+    uint256 amount = ((dividendPerToken - xDividendPerToken[_user]) *
+      holderBalance);
+    amount += credit[_user];
+
+    return amount;
   }
 }
 

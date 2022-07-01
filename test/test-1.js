@@ -28,15 +28,23 @@ describe("ERC721", function () {
 
     let name = "TestToken";
     let symbol = "test";
-    erc721 = await ERC721.deploy(name, symbol);
+    baseURI = "https://ipfs/test/";
+    maxMint = 5;
+    erc721 = await ERC721.deploy(name, symbol, baseURI, maxMint);
     await erc721.deployed();
 
     expect(await erc721.name()).to.equal(name);
     expect(await erc721.symbol()).to.equal(symbol);
+    expect(await erc721.baseURI()).to.equal(baseURI);
+    expect(await erc721.maxMint()).to.equal(maxMint);
   });
 
   it("Should allow account1 to mint", async function () {
-    let mint = await erc721.connect(account1).mint();
+    let override = {
+      value: parseEther("0.1"),
+    };
+
+    let mint = await erc721.connect(account1).mint(1, override);
     await mint.wait();
 
     expect(await erc721.balanceOf(account1.address)).to.be.equal(1);
