@@ -42,15 +42,21 @@ describe("ERC721", function () {
     expect(await erc721.symbol()).to.equal(symbol);
   });
 
-  it("Should allow owner to send to account2", async function () {
-    let transfer = await erc721.transferFrom(
-      owner.address,
-      account2.address,
-      "0"
-    );
+  it("Should allow account1 to mint", async function () {
+    let mint = await erc721.connect(account1).mint();
+    await mint.wait();
+
+    expect(await erc721.balanceOf(account1.address)).to.be.equal(1);
+    expect(await erc721.ownerOf("0")).to.be.equal(account1.address);
+  });
+
+  it("Should allow account1 to send to account2", async function () {
+    let transfer = await erc721
+      .connect(account1)
+      .transferFrom(account1.address, account2.address, "0");
     await transfer.wait();
 
-    expect(await erc721.balanceOf(owner.address)).to.be.equal(0);
+    expect(await erc721.balanceOf(account1.address)).to.be.equal(0);
     expect(await erc721.balanceOf(account2.address)).to.be.equal(1);
     expect(await erc721.ownerOf("0")).to.be.equal(account2.address);
   });
