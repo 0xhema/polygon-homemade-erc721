@@ -8,6 +8,7 @@ import "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
 import "@openzeppelin/contracts/token/ERC721/extensions/IERC721Enumerable.sol";
 import "@openzeppelin/contracts/utils/Context.sol";
 import "@openzeppelin/contracts/utils/Address.sol";
+import "@openzeppelin/contracts/utils/Strings.sol";
 
 import "hardhat/console.sol";
 
@@ -26,9 +27,11 @@ error NonERC721Receiver();
 /// @title ERC721
 contract ERC721 is IERC721, ERC165, Ownable {
   using Address for address;
+  using Strings for uint256;
 
   string private _name;
   string private _symbol;
+  string private _baseTokenURI;
 
   // Mapping from token ID to owner address
   mapping(uint256 => address) private _owners;
@@ -54,9 +57,14 @@ contract ERC721 is IERC721, ERC165, Ownable {
   // Mapping from token id to position in the allTokens array (IERC721-Enumerable)
   mapping(uint256 => uint256) private _allTokensIndex;
 
-  constructor(string memory name_, string memory symbol_) {
+  constructor(
+    string memory name_,
+    string memory symbol_,
+    string memory baseTokenURI_
+  ) {
     _name = name_;
     _symbol = symbol_;
+    _baseTokenURI = baseTokenURI_;
   }
 
   function name() public view returns (string memory) {
@@ -371,5 +379,30 @@ contract ERC721 is IERC721, ERC165, Ownable {
 
     delete _allTokensIndex[tokenId];
     _allTokens.pop();
+  }
+
+  //TOKEN URI
+
+  function baseURI() public view returns (string memory) {
+    return _baseURI();
+  }
+
+  function _baseURI() internal view virtual returns (string memory) {
+    return _baseTokenURI;
+  }
+
+  function tokenURI(uint256 tokenId)
+    public
+    view
+    virtual
+    returns (string memory)
+  {
+    if (!_exists(tokenId)) revert TokenDoesNotExist();
+
+    string memory baseURI = _baseURI();
+    return
+      bytes(baseURI).length != 0
+        ? string(abi.encodePacked(baseURI, tokenId.toString()))
+        : "";
   }
 }

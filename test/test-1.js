@@ -31,13 +31,6 @@ describe("ERC721", function () {
     erc721 = await ERC721.deploy(name, symbol);
     await erc721.deployed();
 
-    // expect(await erc721.balance()).to.equal("Hello, world!");
-
-    // const setGreetingTx = await greeter.setGreeting("Hola, mundo!");
-
-    // wait until the transaction is mined
-    // await setGreetingTx.wait();
-
     expect(await erc721.name()).to.equal(name);
     expect(await erc721.symbol()).to.equal(symbol);
   });
@@ -85,6 +78,18 @@ describe("ERC721", function () {
       .transferFrom(account2.address, account1.address, "0");
 
     await transfer.wait();
+
+    expect(await erc721.balanceOf(account1.address)).to.be.equal(1);
+    expect(await erc721.balanceOf(account2.address)).to.be.equal(0);
+    expect(await erc721.ownerOf("0")).to.be.equal(account1.address);
+  });
+
+  it("Should NOT allow account2 to transfer account1's token to account3", async function () {
+    await expect(
+      erc721
+        .connect(account2)
+        .transferFrom(account1.address, account3.address, "0")
+    ).to.be.reverted;
 
     expect(await erc721.balanceOf(account1.address)).to.be.equal(1);
     expect(await erc721.balanceOf(account2.address)).to.be.equal(0);

@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "test": "npx hardhat test",
-    "testFork": "npx hardhat test --network localhost"
+    "test2": "npx hardhat test test/test-2.js"
   },
   "repository": {
     "type": "git",
