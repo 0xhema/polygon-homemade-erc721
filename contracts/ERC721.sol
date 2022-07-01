@@ -2,6 +2,7 @@
 pragma solidity 0.8.15;
 
 import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/utils/introspection/ERC165.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
@@ -9,6 +10,7 @@ import "@openzeppelin/contracts/token/ERC721/extensions/IERC721Enumerable.sol";
 import "@openzeppelin/contracts/utils/Context.sol";
 import "@openzeppelin/contracts/utils/Address.sol";
 import "@openzeppelin/contracts/utils/Strings.sol";
+import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 
 import "hardhat/console.sol";
 
@@ -23,11 +25,42 @@ error TokenAlreadyExists();
 // Transfer to non ERC721Receiver implementer
 error NonERC721Receiver();
 
+interface DividendPayingTokenInterface {
+  /// @notice View the amount of dividend in wei that an address can withdraw.
+  /// @param _owner The address of a token holder.
+  /// @return The amount of dividend in wei that `_owner` can withdraw.
+  function dividendOf(address _owner) external view returns (uint256);
+
+  /// @notice Distributes ether to token holders as dividends.
+  /// @dev SHOULD distribute the paid ether to token holders as dividends.
+  ///  SHOULD NOT directly transfer ether to token holders in this function.
+  ///  MUST emit a `DividendsDistributed` event when the amount of distributed ether is greater than 0.
+  function distributeDividends() external payable;
+
+  /// @notice Withdraws the ether distributed to the sender.
+  /// @dev SHOULD transfer `dividendOf(msg.sender)` wei to `msg.sender`, and `dividendOf(msg.sender)` SHOULD be 0 after the transfer.
+  ///  MUST emit a `DividendWithdrawn` event if the amount of ether transferred is greater than 0.
+  function withdrawDividend() external;
+
+  /// @dev This event MUST emit when ether is distributed to token holders.
+  /// @param from The address which sends ether to this contract.
+  /// @param weiAmount The amount of distributed ether in wei.
+  event DividendsDistributed(address indexed from, uint256 weiAmount);
+
+  /// @dev This event MUST emit when an address withdraws their dividend.
+  /// @param to The address which withdraws ether from this contract.
+  /// @param weiAmount The amount of withdrawn ether in wei.
+  event DividendWithdrawn(address indexed to, uint256 weiAmount);
+}
+
 /// @author Ebrahim Elbagory
 /// @title ERC721
 contract ERC721 is IERC721, ERC165, Ownable {
   using Address for address;
   using Strings for uint256;
+  using SafeMathUint for uint256;
+  using SafeMathInt for int256;
+  using SafeMath for uint256;
 
   string private _name;
   string private _symbol;
@@ -126,7 +159,9 @@ contract ERC721 is IERC721, ERC165, Ownable {
     );
 
     for (uint256 i; i < _numToMint; i++) {
-      _safeMint(msg.sender, totalSupply() + i, "");
+      _withdrawToCredit(msg.sender);
+      uint256 mintIndex = totalSupply();
+      _safeMint(msg.sender, mintIndex, "");
     }
 
     return _allTokens.length;
@@ -218,7 +253,8 @@ contract ERC721 is IERC721, ERC165, Ownable {
     ) revert IsNotApprovedOrOwner();
 
     if (to == address(0)) revert InvalidInputZeroAddress();
-
+    _withdrawToCredit(to);
+    _withdrawToCredit(from);
     _beforeTokenTransfer(from, to, tokenId);
 
     // Clear approvals from the previous owner
@@ -294,6 +330,7 @@ contract ERC721 is IERC721, ERC165, Ownable {
 
   function _mint(address to, uint256 tokenId) internal virtual {
     if (to == address(0)) revert InvalidInputZeroAddress();
+    console.log("tokenID", tokenId);
     if (_exists(tokenId)) revert TokenAlreadyExists();
 
     _beforeTokenTransfer(address(0), to, tokenId);
@@ -427,5 +464,88 @@ contract ERC721 is IERC721, ERC165, Ownable {
         : "";
   }
 
-  //disperson of funds
+  //--------------------------------------------------------------
+  mapping(address => uint256) credit;
+  uint256 dividendPerToken;
+  mapping(address => uint256) xDividendPerToken;
+
+  event FundsReceived(uint256 value, uint256 dividendPerToken);
+
+  receive() external payable {
+    updateDividendPerToken();
+  }
+
+  function updateDividendPerToken() internal {
+    require(totalSupply() != 0, "No tokens minted");
+    dividendPerToken += msg.value / totalSupply();
+    console.log("new dividen per share");
+    //emit FundsReceived(msg.value, dividendPerToken);
+  }
+
+  function withdraw() external {
+    uint256 holderBalance = balanceOf(_msgSender());
+    require(holderBalance != 0, "DToken: caller possess no shares");
+
+    uint256 amount = ((dividendPerToken - xDividendPerToken[_msgSender()]) *
+      holderBalance);
+    amount += credit[_msgSender()];
+    credit[_msgSender()] = 0;
+    xDividendPerToken[_msgSender()] = dividendPerToken;
+
+    (bool success, ) = payable(_msgSender()).call{ value: amount }("");
+    require(success, "DToken: Could not withdraw eth");
+  }
+
+  function _withdrawToCredit(address to_) private {
+    uint256 recipientBalance = balanceOf(to_);
+    uint256 amount = (dividendPerToken - xDividendPerToken[to_]) *
+      recipientBalance;
+    credit[to_] += amount;
+    xDividendPerToken[to_] = dividendPerToken;
+  }
+}
+
+library SafeMathUint {
+  function toInt256Safe(uint256 a) internal pure returns (int256) {
+    int256 b = int256(a);
+    require(b >= 0);
+    return b;
+  }
+}
+
+library SafeMathInt {
+  function mul(int256 a, int256 b) internal pure returns (int256) {
+    // Prevent overflow when multiplying INT256_MIN with -1
+    // https://github.com/RequestNetwork/requestNetwork/issues/43
+    require(!(a == -2**255 && b == -1) && !(b == -2**255 && a == -1));
+
+    int256 c = a * b;
+    require((b == 0) || (c / b == a));
+    return c;
+  }
+
+  function div(int256 a, int256 b) internal pure returns (int256) {
+    // Prevent overflow when dividing INT256_MIN by -1
+    // https://github.com/RequestNetwork/requestNetwork/issues/43
+    require(!(a == -2**255 && b == -1) && (b > 0));
+
+    return a / b;
+  }
+
+  function sub(int256 a, int256 b) internal pure returns (int256) {
+    require((b >= 0 && a - b <= a) || (b < 0 && a - b > a));
+
+    return a - b;
+  }
+
+  function add(int256 a, int256 b) internal pure returns (int256) {
+    int256 c = a + b;
+    require((b >= 0 && c >= a) || (b < 0 && c < a));
+    return c;
+  }
+
+  function toUint256Safe(int256 a) internal pure returns (uint256) {
+    require(a >= 0);
+    return uint256(a);
+  }
 }
