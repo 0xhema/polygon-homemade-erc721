@@ -32,7 +32,9 @@ contract ERC721 is IERC721, ERC165, Ownable {
   string private _name;
   string private _symbol;
   string private _baseTokenURI;
-
+  uint8 private immutable _maxMint;
+  //price per nft
+  uint256 private immutable _pricePerToken = 1e16;
   // Mapping from token ID to owner address
   mapping(uint256 => address) private _owners;
 
@@ -60,11 +62,13 @@ contract ERC721 is IERC721, ERC165, Ownable {
   constructor(
     string memory name_,
     string memory symbol_,
-    string memory baseTokenURI_
+    string memory baseTokenURI_,
+    uint8 maxMint_
   ) {
     _name = name_;
     _symbol = symbol_;
     _baseTokenURI = baseTokenURI_;
+    _maxMint = maxMint_;
   }
 
   function name() public view returns (string memory) {
@@ -98,6 +102,14 @@ contract ERC721 is IERC721, ERC165, Ownable {
     return owner;
   }
 
+  function maxMint() public view returns (uint8) {
+    return _maxMint;
+  }
+
+  function pricePerToken() public view returns (uint256) {
+    return _pricePerToken;
+  }
+
   function safeTransferFrom(
     address from,
     address to,
@@ -106,8 +118,17 @@ contract ERC721 is IERC721, ERC165, Ownable {
     safeTransferFrom(from, to, tokenId, "");
   }
 
-  function mint() public returns (uint256) {
-    _safeMint(msg.sender, _allTokens.length, "");
+  function mint(uint256 _numToMint) public payable returns (uint256) {
+    require(_numToMint < _maxMint, "You can mint a maximum of ${_maxMint}");
+    require(
+      msg.value >= _pricePerToken * _numToMint,
+      "Not enough ETH sent, check price"
+    );
+
+    for (uint256 i; i < _numToMint; i++) {
+      _safeMint(msg.sender, totalSupply() + i, "");
+    }
+
     return _allTokens.length;
   }
 
@@ -405,4 +426,6 @@ contract ERC721 is IERC721, ERC165, Ownable {
         ? string(abi.encodePacked(baseURI, tokenId.toString()))
         : "";
   }
+
+  //disperson of funds
 }
