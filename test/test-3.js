@@ -33,7 +33,7 @@ describe("ERC721", function () {
     let symbol = "test";
     baseURI = "https://ipfs/test/";
     maxMint = 5;
-    erc721 = await ERC721.deploy(name, symbol, baseURI, maxMint);
+    erc721 = await ERC721.deploy(name, symbol, baseURI);
     await erc721.deployed();
 
     expect(await erc721.name()).to.equal(name);

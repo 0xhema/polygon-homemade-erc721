@@ -34,7 +34,7 @@ contract ERC721 is IERC721, ERC165, Ownable {
   string private _name;
   string private _symbol;
   string private _baseTokenURI;
-  uint8 private immutable _maxMint;
+  uint8 private immutable _maxMint = 5;
   //price per nft
   uint256 private immutable _pricePerToken = 1e16;
   bool internal withdrawIsLocked;
@@ -68,13 +68,11 @@ contract ERC721 is IERC721, ERC165, Ownable {
   constructor(
     string memory name_,
     string memory symbol_,
-    string memory baseTokenURI_,
-    uint8 maxMint_
+    string memory baseTokenURI_
   ) {
     _name = name_;
     _symbol = symbol_;
     _baseTokenURI = baseTokenURI_;
-    _maxMint = maxMint_;
   }
 
   function name() public view returns (string memory) {
@@ -115,11 +113,11 @@ contract ERC721 is IERC721, ERC165, Ownable {
     return owner;
   }
 
-  function maxMint() public view returns (uint8) {
+  function maxMint() public pure returns (uint8) {
     return _maxMint;
   }
 
-  function pricePerToken() public view returns (uint256) {
+  function pricePerToken() public pure returns (uint256) {
     return _pricePerToken;
   }
 
