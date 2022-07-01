@@ -25,42 +25,11 @@ error TokenAlreadyExists();
 // Transfer to non ERC721Receiver implementer
 error NonERC721Receiver();
 
-interface DividendPayingTokenInterface {
-  /// @notice View the amount of dividend in wei that an address can withdraw.
-  /// @param _owner The address of a token holder.
-  /// @return The amount of dividend in wei that `_owner` can withdraw.
-  function dividendOf(address _owner) external view returns (uint256);
-
-  /// @notice Distributes ether to token holders as dividends.
-  /// @dev SHOULD distribute the paid ether to token holders as dividends.
-  ///  SHOULD NOT directly transfer ether to token holders in this function.
-  ///  MUST emit a `DividendsDistributed` event when the amount of distributed ether is greater than 0.
-  function distributeDividends() external payable;
-
-  /// @notice Withdraws the ether distributed to the sender.
-  /// @dev SHOULD transfer `dividendOf(msg.sender)` wei to `msg.sender`, and `dividendOf(msg.sender)` SHOULD be 0 after the transfer.
-  ///  MUST emit a `DividendWithdrawn` event if the amount of ether transferred is greater than 0.
-  function withdrawDividend() external;
-
-  /// @dev This event MUST emit when ether is distributed to token holders.
-  /// @param from The address which sends ether to this contract.
-  /// @param weiAmount The amount of distributed ether in wei.
-  event DividendsDistributed(address indexed from, uint256 weiAmount);
-
-  /// @dev This event MUST emit when an address withdraws their dividend.
-  /// @param to The address which withdraws ether from this contract.
-  /// @param weiAmount The amount of withdrawn ether in wei.
-  event DividendWithdrawn(address indexed to, uint256 weiAmount);
-}
-
 /// @author Ebrahim Elbagory
 /// @title ERC721
 contract ERC721 is IERC721, ERC165, Ownable {
   using Address for address;
   using Strings for uint256;
-  using SafeMathUint for uint256;
-  using SafeMathInt for int256;
-  using SafeMath for uint256;
 
   string private _name;
   string private _symbol;
@@ -518,50 +487,5 @@ contract ERC721 is IERC721, ERC165, Ownable {
     amount += credit[_user];
 
     return amount;
-  }
-}
-
-library SafeMathUint {
-  function toInt256Safe(uint256 a) internal pure returns (int256) {
-    int256 b = int256(a);
-    require(b >= 0);
-    return b;
-  }
-}
-
-library SafeMathInt {
-  function mul(int256 a, int256 b) internal pure returns (int256) {
-    // Prevent overflow when multiplying INT256_MIN with -1
-    // https://github.com/RequestNetwork/requestNetwork/issues/43
-    require(!(a == -2**255 && b == -1) && !(b == -2**255 && a == -1));
-
-    int256 c = a * b;
-    require((b == 0) || (c / b == a));
-    return c;
-  }
-
-  function div(int256 a, int256 b) internal pure returns (int256) {
-    // Prevent overflow when dividing INT256_MIN by -1
-    // https://github.com/RequestNetwork/requestNetwork/issues/43
-    require(!(a == -2**255 && b == -1) && (b > 0));
-
-    return a / b;
-  }
-
-  function sub(int256 a, int256 b) internal pure returns (int256) {
-    require((b >= 0 && a - b <= a) || (b < 0 && a - b > a));
-
-    return a - b;
-  }
-
-  function add(int256 a, int256 b) internal pure returns (int256) {
-    int256 c = a + b;
-    require((b >= 0 && c >= a) || (b < 0 && c < a));
-    return c;
-  }
-
-  function toUint256Safe(int256 a) internal pure returns (uint256) {
-    require(a >= 0);
-    return uint256(a);
   }
 }
