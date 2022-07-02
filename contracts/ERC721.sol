@@ -49,6 +49,8 @@ error CantMintMoreTokens();
 // User is trying to mint too many tokens
 error AttemptingToMintToManyTokens();
 
+
+
 /** @author Ebrahim Elbagory
  *  @title  Homemade ERC721
  *  @notice Ethereum Dividends from potential collected royalities
@@ -84,6 +86,9 @@ contract ERC721 is
 
   // The cost per token at mint
   uint256 private immutable _pricePerToken = 1e17;
+
+  // The Maximum supply of tokens
+  uint8 private immutable _maxSupply = 25;
 
   // If the revenue of mint has been withdrawn and the contract has been locked
   bool internal withdrawIsLocked;
@@ -225,6 +230,7 @@ contract ERC721 is
       revert NotEnoughETHtoMint();
     if (withdrawIsLocked) revert MintIsOver();
     if (_numberOfTokens + tokensMinted[msg.sender] > _maxMint) revert CantMintMoreTokens();
+    if (_numberOfTokens + _minted > _maxSupply) revert MaxSupplyReached();
 
     tokensMinted[msg.sender] += _numberOfTokens;
     _withdrawToCredit(msg.sender);

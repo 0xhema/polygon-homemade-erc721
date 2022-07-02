@@ -53,7 +53,7 @@ describe("ERC721 Refactored - Test 1", function () {
     expect(await erc721.ownerOf("0")).to.be.equal(account1.address);
   });
 
-  it("Should allow account1 to mint", async function () {
+  it("Should NOT allow account1 to mint more then max", async function () {
     let override = {
       value: parseEther("0.5"),
     };
@@ -208,6 +208,7 @@ describe("ERC721 Refactored - Test 1", function () {
     let index = await erc721.tokenByIndex("1");
     expect(index).to.be.equal("1");
   });
+
   it("Should revert state", async function () {
     await hre.network.provider.request({
       method: "evm_revert",
