@@ -9,7 +9,7 @@ const {
 } = require("@ethersproject/units");
 const { LogDescription } = require("ethers/lib/utils");
 
-describe("ERC721", function () {
+describe("ERC721 Version 1 - Test 3", function () {
   let owner, account1, account2, account3, state, erc721, baseURI, maxMint;
   let totalclaimed1 = 0;
   let totalclaimed2 = 0;
@@ -27,12 +27,14 @@ describe("ERC721", function () {
   });
 
   it("Should deploy new ERC721 contract", async function () {
-    const ERC721 = await ethers.getContractFactory("ERC721");
+    const ERC721 = await ethers.getContractFactory(
+      "./contracts/ERC721Old.sol:ERC721"
+    );
 
     let name = "TestToken";
     let symbol = "test";
     baseURI = "https://ipfs/test/";
-    maxMint = 5;
+    maxMint = 15;
     erc721 = await ERC721.deploy(name, symbol, baseURI);
     await erc721.deployed();
 
