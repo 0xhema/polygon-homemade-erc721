@@ -68,9 +68,15 @@ While this contract is unique, there are some missing features that it would nee
   > Allow for a whitelist/allowlist mint and add an enumeration for different stages of the mint. I.E. split mint into 1k at a time to avoid gas war
 
 - Permits to allow for zero gas approvals
+- Support for ERC20 dividends
 
 ### Cool addition
 
 - An Affilate Minting feature
 
   > In the spirit of a truly decentralized NFT collection incentivization would be important. You could pass on the financial incentive of community growth from project owner to holders directly using an affiliate mint feature. This would add the ability for affilate codes to generated and if someone uses the affilates code you could add to their dividen balance a percentage of the mint and offer a discount to the person who uses code or something...
+
+### Caveats
+
+- The dividend distribution accounts for ethereum being sent to the contract. Opensea and other exchanges can distribute royalties by sending eth but they also distribute royalties in WETH and other ERC20 tokens. <ins><b>This contract does NOT take this into account</b></ins>. The contract would need the added feature of communicating with a DEX to swap the tokens that are sent to it for ETH. 
+- To burn tokens you would need to send to the DeAD address, not the zero address.
