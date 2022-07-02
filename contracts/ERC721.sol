@@ -44,6 +44,10 @@ error MintLessThan1();
 error MintHasNotStarted();
 /// caller has no tokens
 error HoldingZeroTokens();
+// User has already minted the maximum tokens
+error CantMintMoreTokens();
+// User is trying to mint too many tokens
+error AttemptingToMintToManyTokens();
 
 /** @author Ebrahim Elbagory
  *  @title  Homemade ERC721
@@ -68,24 +72,35 @@ contract ERC721 is
 
   // Name of token 
   string private _name;
+
   // Symbol of Token
   string private _symbol;
+
   // Base URI for token 
   string private _baseTokenURI;
+
   // The maximum tokens someone can mint at a time
   uint8 private immutable _maxMint;
+
   // The cost per token at mint
   uint256 private immutable _pricePerToken = 1e17;
+
   // If the revenue of mint has been withdrawn and the contract has been locked
   bool internal withdrawIsLocked;
+
   // The dividend that should be paid per token 
   uint256 dividendPerToken;
+
   // Dividend Per token per user
   mapping(address => uint256) xDividendPerToken;
+
   // The amount of credit that a user has accumulated
   mapping(address => uint256) credit;
+
   // Mapping from token ID to owner address
   mapping(uint256 => address) private _owners;
+
+  // Number of tokens minted
   uint256 internal _minted;
 
   // Mapping from token ID to approved address
@@ -93,6 +108,9 @@ contract ERC721 is
 
   // Mapping from owner to operator approvals
   mapping(address => mapping(address => bool)) private _operatorApprovals;
+
+  // Tokens minted per user
+  mapping(address => uint256) tokensMinted;
 
  /**
   * @dev Emitted when owner withdraws revenue from mint and locks contract
@@ -196,15 +214,19 @@ contract ERC721 is
   /** @notice allow for public to mint tokens
    *  @param _numberOfTokens number of tokens to mint
    *  @dev reverts if user is not sending enough ethereum
+   *  @dev reverts if user has already minted maximum tokens
+   *  @dev reverts if mint period is over
    *  @dev reverts if user is attempting to mint over the maximum tokens
    *  @dev users will not be able to mint anymore tokens after owner has withdrawn and locked contract
    */
   function mint(uint256 _numberOfTokens) public payable {
-    if (_numberOfTokens > _maxMint) revert MaxSupplyReached();
+    if (_numberOfTokens > _maxMint) revert AttemptingToMintToManyTokens();
     if (msg.value < (_pricePerToken * _numberOfTokens))
       revert NotEnoughETHtoMint();
     if (withdrawIsLocked) revert MintIsOver();
+    if (_numberOfTokens + tokensMinted[msg.sender] > _maxMint) revert CantMintMoreTokens();
 
+    tokensMinted[msg.sender] += _numberOfTokens;
     _withdrawToCredit(msg.sender);
     _safeMint(msg.sender, _numberOfTokens);
   }

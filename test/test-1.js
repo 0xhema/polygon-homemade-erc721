@@ -53,6 +53,17 @@ describe("ERC721 Refactored - Test 1", function () {
     expect(await erc721.ownerOf("0")).to.be.equal(account1.address);
   });
 
+  it("Should allow account1 to mint", async function () {
+    let override = {
+      value: parseEther("0.5"),
+    };
+
+    await expect(erc721.connect(account1).mint(5, override)).to.be.reverted;
+
+    expect(await erc721.balanceOf(account1.address)).to.be.equal(1);
+    expect(await erc721.ownerOf("0")).to.be.equal(account1.address);
+  });
+
   it("Should NOT allow account1 to mint more then max", async function () {
     let override = {
       value: parseEther("1.0"),
