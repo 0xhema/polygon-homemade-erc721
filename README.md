@@ -10,6 +10,8 @@ The next feature of my homebrew ERC721 contract is the addition of ethereum divi
 
 To keep this process secure, once the public sale is completed the owner of the contract can call the `withdrawAndLock` function a single time. This constraint protects user dividends from being removed in the future.
 
+Here are the top collections and the amount that could have been distributed to each holder if they were to use my implementation of an ERC721 token
+
 | Rank | Collection                | Life Time Volume (in Eth) | Holder Count | Potential Rewards Per Holder at 8% Royalty (in ETH) | Project Revenue at 2% Royalty |
 | ---- | ------------------------- | ------------------------- | ------------ | --------------------------------------------------- | ----------------------------- |
 | 1    | CryptoPunks               | 944,426                   | 3500         | 21.58688                                            | 18888.52                      |
@@ -24,27 +26,23 @@ There is also the addition of a max mint and a price for mint.
 
 ## Before Gas Optmization
 
-Gas Used to mint 1 token: 111856
-✓ Should allow account1 to mint 1 token
-Gas Used to mint 2 token: 274525
-✓ Should allow account1 to mint 2 tokens
-Gas Used to mint 3 token: 391794
-✓ Should allow account1 to mint 3 tokens
-Gas Used to mint 4 token: 509063
-✓ Should allow account1 to mint 4 tokens
-Gas Used to mint 5 token: 626332
+| Tokens Minted | Gas Used |
+| ------------- | -------- |
+| 1             | 111856   |
+| 2             | 274525   |
+| 3             | 391794   |
+| 4             | 509063   |
+| 5             | 626332   |
 
 ## After Gas Optmization
 
-Gas Used to mint 1 token: 124890
-✓ Should allow account1 to mint 1 token
-Gas Used to mint 2 token: 79711
-✓ Should allow account1 to mint 2 tokens
-Gas Used to mint 3 token: 87662
-✓ Should allow account1 to mint 3 tokens
-Gas Used to mint 4 token: 97443
-✓ Should allow account1 to mint 4 tokens
-Gas Used to mint 5 token: 109059
+| Tokens Minted | Gas Used |
+| ------------- | -------- |
+| 1             | 124890   |
+| 2             | 79711    |
+| 3             | 87662    |
+| 4             | 97443    |
+| 5             | 109059   |
 
 ```shell
 npx hardhat accounts
@@ -60,3 +58,19 @@ or
 npm test # run all tests
 npm deploy --network `networkName` # deploys contract and verifys contract to specified network
 ```
+
+### Possible additions in the future
+
+While this contract is unique, there are some missing features that it would need to allow it to compete with the current trends in the NFT World.
+
+- MerkleTree Whitelist Function
+
+  > Allow for a whitelist/allowlist mint and add an enumeration for different stages of the mint. I.E. split mint into 1k at a time to avoid gas war
+
+- Permits to allow for zero gas approvals
+
+### Cool addition
+
+- An Affilate Minting feature
+
+  > In the spirit of a truly decentralized NFT collection incentivization would be important. You could pass on the financial incentive of community growth from project owner to holders directly using an affiliate mint feature. This would add the ability for affilate codes to generated and if someone uses the affilates code you could add to their dividen balance a percentage of the mint and offer a discount to the person who uses code or something...
