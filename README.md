@@ -4,7 +4,7 @@ This is my homebrew ERC721 contract.
 
 ## Gas Efficiency
 
-It is designed for scalable and gas-efficient using soldity-bit's bitmap libary.
+It is designed for scalable and gas-efficient using soldity-bit's bitmap libary. It also uses custom errors instead of traditional require statements for even more gas-optimzation.
 
 The next feature of my homebrew ERC721 contract is the addition of ethereum dividends. This allows users to be able to collect dividends from the smart contract. A perfect use-case for this would be if royalties from trading volume were sent to this contract. The contract would then calculate a dividend per token that users would then be able to collect whenever they wanted by calling the `withdraw` function. There can be many different ways to collect dividends and distribute them among holder that would trully allow a holder to participate in the success of a project while the project still remains profitable.
 
