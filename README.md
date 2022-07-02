@@ -44,6 +44,7 @@ There is also the addition of a max mint and a price for mint.
 | 4             | 97443    |
 | 5             | 109059   |
 
+## useful commands
 ```shell
 npx hardhat accounts
 npx hardhat compile
