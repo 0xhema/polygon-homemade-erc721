@@ -8,7 +8,7 @@ const {
   parseEther,
 } = require("@ethersproject/units");
 
-describe("ERC721", function () {
+describe("ERC721 Refactored - Test 1", function () {
   let owner, account1, account2, account3, state, erc721;
 
   it("Should set accounts", async function () {
@@ -24,13 +24,15 @@ describe("ERC721", function () {
   });
 
   it("Should deploy new ERC721 contract", async function () {
-    const ERC721 = await ethers.getContractFactory("ERC721");
+    const ERC721 = await ethers.getContractFactory(
+      "./contracts/ERC721.sol:ERC721"
+    );
 
     let name = "TestToken";
     let symbol = "test";
     baseURI = "https://ipfs/test/";
     maxMint = 5;
-    erc721 = await ERC721.deploy(name, symbol, baseURI);
+    erc721 = await ERC721.deploy(name, symbol, baseURI, maxMint);
     await erc721.deployed();
 
     expect(await erc721.name()).to.equal(name);
@@ -47,6 +49,68 @@ describe("ERC721", function () {
     let mint = await erc721.connect(account1).mint(1, override);
     await mint.wait();
 
+    expect(await erc721.balanceOf(account1.address)).to.be.equal(1);
+    expect(await erc721.ownerOf("0")).to.be.equal(account1.address);
+  });
+
+  it("Should NOT allow account1 to mint more then max", async function () {
+    let override = {
+      value: parseEther("1.0"),
+    };
+
+    await expect(erc721.connect(account1).mint(10, override)).to.be.reverted;
+    expect(await erc721.balanceOf(account1.address)).to.be.equal(1);
+    expect(await erc721.ownerOf("0")).to.be.equal(account1.address);
+  });
+
+  it("Should NOT allow account1 to mint if they aren't sending enough eth", async function () {
+    let override = {
+      value: parseEther("0.4"),
+    };
+
+    await expect(erc721.connect(account1).mint(5, override)).to.be.reverted;
+    expect(await erc721.balanceOf(account1.address)).to.be.equal(1);
+    expect(await erc721.ownerOf("0")).to.be.equal(account1.address);
+  });
+
+  it("Should NOT allow account1 to send to zero address", async function () {
+    let zeroAddress = "0x0000000000000000000000000000000000000000";
+    await expect(
+      erc721
+        .connect(account1)
+        ["safeTransferFrom(address,address,uint256)"](
+          account1.address,
+          zeroAddress,
+          "0"
+        )
+    ).to.be.reverted;
+
+    expect(await erc721.balanceOf(account1.address)).to.be.equal(1);
+    expect(await erc721.ownerOf("0")).to.be.equal(account1.address);
+  });
+
+  it("Should NOT allow account1 to send to itself", async function () {
+    let zeroAddress = "0x0000000000000000000000000000000000000000";
+    await expect(
+      erc721
+        .connect(account1)
+        ["safeTransferFrom(address,address,uint256)"](
+          account1.address,
+          account1.address,
+          "0"
+        )
+    ).to.be.reverted;
+
+    expect(await erc721.balanceOf(account1.address)).to.be.equal(1);
+    expect(await erc721.ownerOf("0")).to.be.equal(account1.address);
+  });
+
+  it("Should NOT allow account1 to mint 0 tokens", async function () {
+    let override = {
+      value: parseEther("0.0"),
+    };
+
+    await expect(erc721.connect(account1).mint(0, override)).to.be.reverted;
     expect(await erc721.balanceOf(account1.address)).to.be.equal(1);
     expect(await erc721.ownerOf("0")).to.be.equal(account1.address);
   });
@@ -104,6 +168,35 @@ describe("ERC721", function () {
     expect(await erc721.ownerOf("0")).to.be.equal(account1.address);
   });
 
+  it("Should allow owner to withdraw and lock", async function () {
+    let before = formatEther(await ethers.provider.getBalance(erc721.address));
+    let beforeOwner = formatEther(
+      await ethers.provider.getBalance(owner.address)
+    );
+    let withdraw = await erc721.withdrawAndLock();
+    let txReceipt = await withdraw.wait();
+
+    let after = formatEther(await ethers.provider.getBalance(erc721.address));
+    let afterOwner = formatEther(
+      await ethers.provider.getBalance(owner.address)
+    );
+
+    expect(parseInt(after)).to.be.equal(0);
+    expect(parseFloat(afterOwner)).to.be.greaterThan(parseFloat(beforeOwner));
+  });
+
+  it("Should NOT allow owner to withdraw and lock a second time", async function () {
+    await expect(erc721.withdrawAndLock()).to.be.reverted;
+  });
+
+  it("Should NOT allow token by index of non-existent token", async function () {
+    await expect(erc721.tokenByIndex("50")).to.be.reverted;
+  });
+
+  it("Should allow users to call token by index of existing token", async function () {
+    let index = await erc721.tokenByIndex("1");
+    expect(index).to.be.equal("1");
+  });
   it("Should revert state", async function () {
     await hre.network.provider.request({
       method: "evm_revert",

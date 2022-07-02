@@ -7,10 +7,12 @@ import "@openzeppelin/contracts/utils/introspection/ERC165.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
 import "@openzeppelin/contracts/token/ERC721/extensions/IERC721Enumerable.sol";
+import "@openzeppelin/contracts/token/ERC721/extensions/IERC721Metadata.sol";
 import "@openzeppelin/contracts/utils/Context.sol";
 import "@openzeppelin/contracts/utils/Address.sol";
 import "@openzeppelin/contracts/utils/Strings.sol";
 import "@openzeppelin/contracts/utils/math/SafeMath.sol";
+import "./utils/BitMaps.sol";
 
 import "hardhat/console.sol";
 
@@ -20,30 +22,60 @@ error InvalidInputZeroAddress();
 error IsNotApprovedOrOwner();
 // Token doesn't exist
 error TokenDoesNotExist();
-// Token doesn't exist
+// Token already exists
 error TokenAlreadyExists();
 // Transfer to non ERC721Receiver implementer
 error NonERC721Receiver();
+// Max supply has been reached
+error MaxSupplyReached();
+// Not enough ETH to mint
+error NotEnoughETHtoMint();
+// mint is over
+error MintIsOver();
+// Can't Approve to caller
+error FromCantBeTo();
+// Can't call function twice
+error CantCallTwice();
+// Can't Withdraw
+error WithdrawlFailed();
+// Must Mint More then 0
+error MintLessThan1();
+// No Tokens have been minted
+error MintHasNotStarted();
+// caller has no tokens
+error HoldingZeroTokens();
 
 /// @author Ebrahim Elbagory
 /// @title ERC721
-contract ERC721 is IERC721, ERC165, Ownable {
+contract ERC721 is
+  IERC721,
+  ERC165,
+  Ownable,
+  IERC721Enumerable,
+  IERC721Metadata
+{
   using Address for address;
   using Strings for uint256;
+  using BitMaps for BitMaps.BitMap;
+
+  BitMaps.BitMap private _batchHead;
+
+  //dividen var
+  mapping(address => uint256) credit;
+  uint256 dividendPerToken;
+  mapping(address => uint256) xDividendPerToken;
 
   string private _name;
   string private _symbol;
   string private _baseTokenURI;
-  uint8 private immutable _maxMint = 5;
+  uint8 private immutable _maxMint;
   //price per nft
-  uint256 private immutable _pricePerToken = 1e16;
+  uint256 private immutable _pricePerToken = 1e17;
   bool internal withdrawIsLocked;
 
   // Mapping from token ID to owner address
   mapping(uint256 => address) private _owners;
-
-  // Mapping owner address to token count
-  mapping(address => uint256) private _balances;
+  uint256 internal _minted;
 
   // Mapping from token ID to approved address
   mapping(uint256 => address) private _tokenApprovals;
@@ -51,28 +83,23 @@ contract ERC721 is IERC721, ERC165, Ownable {
   // Mapping from owner to operator approvals
   mapping(address => mapping(address => bool)) private _operatorApprovals;
 
-  // Mapping from owner to list of owned token IDs (IERC721-Enumerable)
-  mapping(address => mapping(uint256 => uint256)) private _ownedTokens;
-
-  // Mapping from token ID to index of the owner tokens list  (IERC721-Enumerable)
-  mapping(uint256 => uint256) private _ownedTokensIndex;
-
-  // Array with all token ids, used for enumeration (IERC721-Enumerable)
-  uint256[] private _allTokens;
-
-  // Mapping from token id to position in the allTokens array (IERC721-Enumerable)
-  mapping(uint256 => uint256) private _allTokensIndex;
-
   event WithdrawAndLock(bool _withdrawAndLock);
+  event withdrawlMade(address indexed withdrawer, uint256 amount);
+
+  receive() external payable {
+    if (withdrawIsLocked) updateDividendPerToken();
+  }
 
   constructor(
     string memory name_,
     string memory symbol_,
-    string memory baseTokenURI_
+    string memory baseTokenURI_,
+    uint8 maxMint_
   ) {
     _name = name_;
     _symbol = symbol_;
     _baseTokenURI = baseTokenURI_;
+    _maxMint = maxMint_;
   }
 
   function name() public view returns (string memory) {
@@ -91,11 +118,19 @@ contract ERC721 is IERC721, ERC165, Ownable {
     returns (uint256)
   {
     if (owner == address(0)) revert InvalidInputZeroAddress();
-    return _balances[owner];
+    uint256 count;
+    for (uint256 i; i < _minted; ++i) {
+      if (_exists(i)) {
+        if (owner == ownerOf(i)) {
+          ++count;
+        }
+      }
+    }
+    return count;
   }
 
   function withdrawAndLock() external onlyOwner {
-    require(!withdrawIsLocked, "Can only call this function once");
+    if (withdrawIsLocked) revert CantCallTwice();
     withdrawIsLocked = true;
     payable(owner()).transfer(address(this).balance);
     emit WithdrawAndLock(withdrawIsLocked);
@@ -108,12 +143,21 @@ contract ERC721 is IERC721, ERC165, Ownable {
     override
     returns (address)
   {
-    address owner = _owners[tokenId];
-    if (owner == address(0)) revert TokenDoesNotExist();
+    (address owner, ) = _ownerAndBatchHeadOf(tokenId);
     return owner;
   }
 
-  function maxMint() public pure returns (uint8) {
+  function _ownerAndBatchHeadOf(uint256 tokenId)
+    internal
+    view
+    returns (address owner, uint256 tokenIdBatchHead)
+  {
+    if (!_exists(tokenId)) revert TokenDoesNotExist();
+    tokenIdBatchHead = _getBatchHead(tokenId);
+    owner = _owners[tokenIdBatchHead];
+  }
+
+  function maxMint() public view returns (uint8) {
     return _maxMint;
   }
 
@@ -129,21 +173,13 @@ contract ERC721 is IERC721, ERC165, Ownable {
     safeTransferFrom(from, to, tokenId, "");
   }
 
-  function mint(uint256 _numToMint) public payable returns (uint256) {
-    require(_numToMint < _maxMint, "Error: Max supply has been reached");
-    require(
-      msg.value >= _pricePerToken * _numToMint,
-      "Not enough ETH sent, check price"
-    );
-    require(!withdrawIsLocked, "Mint is over");
+  function mint(uint256 _numToMint) public payable {
+    if (_numToMint > _maxMint) revert MaxSupplyReached();
+    if (msg.value < (_pricePerToken * _numToMint)) revert NotEnoughETHtoMint();
+    if (withdrawIsLocked) revert MintIsOver();
 
-    for (uint256 i; i < _numToMint; i++) {
-      _withdrawToCredit(msg.sender);
-      uint256 mintIndex = totalSupply();
-      _safeMint(msg.sender, mintIndex, "");
-    }
-
-    return _allTokens.length;
+    _withdrawToCredit(msg.sender);
+    _safeMint(msg.sender, _numToMint);
   }
 
   function safeTransferFrom(
@@ -154,6 +190,7 @@ contract ERC721 is IERC721, ERC165, Ownable {
   ) public virtual override {
     if (!_isApprovedOrOwner(_msgSender(), tokenId))
       revert IsNotApprovedOrOwner();
+    if (to == from) revert FromCantBeTo();
     _safeTransfer(from, to, tokenId, data);
   }
 
@@ -162,16 +199,19 @@ contract ERC721 is IERC721, ERC165, Ownable {
     address to,
     uint256 tokenId
   ) public virtual override {
+    if (!_isApprovedOrOwner(_msgSender(), tokenId))
+      revert IsNotApprovedOrOwner();
     _transfer(from, to, tokenId);
   }
 
-  function approve(address to, uint256 tokenId) public virtual override {
-    address owner = ERC721.ownerOf(tokenId);
-    require(to != owner, "ERC721: approval to current owner");
+  function approve(address operator, uint256 tokenId) public virtual override {
+    address owner = ownerOf(tokenId);
+    if (operator == _msgSender()) revert FromCantBeTo();
 
-    if (_msgSender() != owner) revert IsNotApprovedOrOwner();
+    if (!_isApprovedOrOwner(_msgSender(), tokenId) || msg.sender != owner)
+      revert IsNotApprovedOrOwner();
 
-    _approve(to, tokenId);
+    _approve(operator, tokenId);
   }
 
   function setApprovalForAll(address operator, bool approved)
@@ -179,7 +219,10 @@ contract ERC721 is IERC721, ERC165, Ownable {
     virtual
     override
   {
-    _setApprovalForAll(_msgSender(), operator, approved);
+    if (operator == _msgSender()) revert FromCantBeTo();
+
+    _operatorApprovals[_msgSender()][operator] = approved;
+    emit ApprovalForAll(_msgSender(), operator, approved);
   }
 
   function getApproved(uint256 tokenId)
@@ -194,6 +237,53 @@ contract ERC721 is IERC721, ERC165, Ownable {
     return _tokenApprovals[tokenId];
   }
 
+  function _exists(uint256 tokenId) internal view virtual returns (bool) {
+    return tokenId < _minted;
+  }
+
+  function _safeTransfer(
+    address from,
+    address to,
+    uint256 tokenId,
+    bytes memory data
+  ) internal virtual {
+    _transfer(from, to, tokenId);
+    if (!_checkOnERC721Received(from, to, tokenId, 1, data))
+      revert NonERC721Receiver();
+  }
+
+  function _transfer(
+    address from,
+    address to,
+    uint256 tokenId
+  ) internal virtual {
+    (address owner, uint256 tokenIdBatchHead) = _ownerAndBatchHeadOf(tokenId);
+
+    if (owner != from) revert IsNotApprovedOrOwner();
+    if (to == address(0)) revert InvalidInputZeroAddress();
+
+    _beforeTokenTransfer(from, to, tokenId, 1);
+
+    // Clear approvals from the previous owner
+    _approve(address(0), tokenId);
+
+    uint256 nextTokenId = tokenId + 1;
+
+    if (!_batchHead.get(nextTokenId) && nextTokenId < _minted) {
+      _owners[nextTokenId] = from;
+      _batchHead.set(nextTokenId);
+    }
+
+    _owners[tokenId] = to;
+    if (tokenId != tokenIdBatchHead) {
+      _batchHead.set(tokenId);
+    }
+
+    emit Transfer(from, to, tokenId);
+
+    _afterTokenTransfer(from, to, tokenId, 1);
+  }
+
   function isApprovedForAll(address owner, address operator)
     public
     view
@@ -204,50 +294,6 @@ contract ERC721 is IERC721, ERC165, Ownable {
     return _operatorApprovals[owner][operator];
   }
 
-  function _exists(uint256 tokenId) internal view virtual returns (bool) {
-    return _owners[tokenId] != address(0);
-  }
-
-  function _safeTransfer(
-    address from,
-    address to,
-    uint256 tokenId,
-    bytes memory data
-  ) internal virtual {
-    _transfer(from, to, tokenId);
-    require(
-      _checkOnERC721Received(from, to, tokenId, data),
-      "ERC721: transfer to non ERC721Receiver implementer"
-    );
-  }
-
-  function _transfer(
-    address from,
-    address to,
-    uint256 tokenId
-  ) internal virtual {
-    if (
-      !_isApprovedOrOwner(_msgSender(), tokenId) ||
-      ERC721.ownerOf(tokenId) != from
-    ) revert IsNotApprovedOrOwner();
-
-    if (to == address(0)) revert InvalidInputZeroAddress();
-    _withdrawToCredit(to);
-    _withdrawToCredit(from);
-    _beforeTokenTransfer(from, to, tokenId);
-
-    // Clear approvals from the previous owner
-    _approve(address(0), tokenId);
-
-    _balances[from] -= 1;
-    _balances[to] += 1;
-    _owners[tokenId] = to;
-
-    emit Transfer(from, to, tokenId);
-
-    _afterTokenTransfer(from, to, tokenId);
-  }
-
   function _isApprovedOrOwner(address spender, uint256 tokenId)
     internal
     view
@@ -255,10 +301,10 @@ contract ERC721 is IERC721, ERC165, Ownable {
     returns (bool)
   {
     if (!_exists(tokenId)) revert TokenDoesNotExist();
-    address owner = ERC721.ownerOf(tokenId);
+    address owner = ownerOf(tokenId);
     return (spender == owner ||
-      isApprovedForAll(owner, spender) ||
-      getApproved(tokenId) == spender);
+      getApproved(tokenId) == spender ||
+      isApprovedForAll(owner, spender));
   }
 
   function _setApprovalForAll(
@@ -266,155 +312,120 @@ contract ERC721 is IERC721, ERC165, Ownable {
     address operator,
     bool approved
   ) internal virtual {
-    require(owner != operator, "ERC721: approve to caller");
+    if (owner == operator) revert FromCantBeTo();
     _operatorApprovals[owner][operator] = approved;
     emit ApprovalForAll(owner, operator, approved);
   }
 
+  function _safeMint(address to, uint256 quantity) internal virtual {
+    _safeMint(to, quantity, "");
+  }
+
   function _safeMint(
     address to,
-    uint256 tokenId,
-    bytes memory data
+    uint256 quantity,
+    bytes memory _data
   ) internal virtual {
-    _mint(to, tokenId);
-    if (!_checkOnERC721Received(address(0), to, tokenId, data))
+    uint256 startTokenId = _minted;
+    _mint(to, quantity);
+    if (!_checkOnERC721Received(address(0), to, startTokenId, quantity, _data))
       revert NonERC721Receiver();
   }
 
-  function _checkOnERC721Received(
-    address from,
-    address to,
-    uint256 tokenId,
-    bytes memory data
-  ) private returns (bool) {
-    if (to.isContract()) {
-      try
-        IERC721Receiver(to).onERC721Received(_msgSender(), from, tokenId, data)
-      returns (bytes4 retval) {
-        return retval == IERC721Receiver.onERC721Received.selector;
-      } catch (bytes memory reason) {
-        if (reason.length == 0) {
-          revert("ERC721: transfer to non ERC721Receiver implementer");
-        } else {
-          /// @solidity memory-safe-assembly
-          assembly {
-            revert(add(32, reason), mload(reason))
-          }
-        }
-      }
-    } else {
-      return true;
-    }
-  }
+  function _mint(address to, uint256 quantity) internal virtual {
+    uint256 tokenIdBatchHead = _minted;
 
-  function _mint(address to, uint256 tokenId) internal virtual {
+    if (quantity <= 0) revert MintLessThan1();
     if (to == address(0)) revert InvalidInputZeroAddress();
-    if (_exists(tokenId)) revert TokenAlreadyExists();
 
-    _beforeTokenTransfer(address(0), to, tokenId);
+    _beforeTokenTransfer(address(0), to, tokenIdBatchHead, quantity);
+    _minted += quantity;
+    _owners[tokenIdBatchHead] = to;
+    _batchHead.set(tokenIdBatchHead);
+    _afterTokenTransfer(address(0), to, tokenIdBatchHead, quantity);
 
-    _balances[to] += 1;
-    _owners[tokenId] = to;
-
-    emit Transfer(address(0), to, tokenId);
-
-    _afterTokenTransfer(address(0), to, tokenId);
+    // Emit events
+    for (
+      uint256 tokenId = tokenIdBatchHead;
+      tokenId < tokenIdBatchHead + quantity;
+      tokenId++
+    ) {
+      emit Transfer(address(0), to, tokenId);
+    }
   }
 
   function _afterTokenTransfer(
     address from,
     address to,
-    uint256 tokenId
+    uint256 startTokenId,
+    uint256 quantity
   ) internal virtual {}
 
   function _beforeTokenTransfer(
     address from,
     address to,
-    uint256 tokenId
-  ) internal virtual {
-    if (from == address(0)) {
-      _addTokenToAllTokensEnumeration(tokenId);
-    } else if (from != to) {
-      _removeTokenFromOwnerEnumeration(from, tokenId);
-    }
-    if (to == address(0)) {
-      _removeTokenFromAllTokensEnumeration(tokenId);
-    } else if (to != from) {
-      _addTokenToOwnerEnumeration(to, tokenId);
-    }
-  }
+    uint256 startTokenId,
+    uint256 quantity
+  ) internal virtual {}
 
   function _approve(address to, uint256 tokenId) internal virtual {
     _tokenApprovals[tokenId] = to;
-    emit Approval(ERC721.ownerOf(tokenId), to, tokenId);
+    emit Approval(ownerOf(tokenId), to, tokenId);
   }
 
   // ENUMERATION
+  /**
+   * @dev See {IERC721Enumerable-totalSupply}.
+   */
+  function totalSupply() public view virtual override returns (uint256) {
+    return _minted;
+  }
 
+  /**
+   * @dev See {IERC721Enumerable-tokenByIndex}.
+   */
+  function tokenByIndex(uint256 index)
+    public
+    view
+    virtual
+    returns (uint256 count)
+  {
+    if (index > totalSupply()) revert TokenDoesNotExist();
+
+    for (uint256 i; i < _minted; i++) {
+      if (_exists(i)) {
+        if (count == index) return i;
+        else count++;
+      }
+    }
+  }
+
+  /**
+   * @dev See {IERC721Enumerable-tokenOfOwnerByIndex}.
+   */
   function tokenOfOwnerByIndex(address owner, uint256 index)
     public
     view
     virtual
-    returns (uint256)
+    returns (uint256 tokenId)
   {
-    require(
-      index < ERC721.balanceOf(owner),
-      "ERC721Enumerable: owner index out of bounds"
-    );
-    return _ownedTokens[owner][index];
-  }
-
-  function totalSupply() public view virtual returns (uint256) {
-    return _allTokens.length;
-  }
-
-  function tokenByIndex(uint256 index) public view virtual returns (uint256) {
-    require(
-      index < ERC721.totalSupply(),
-      "ERC721Enumerable: global index out of bounds"
-    );
-    return _allTokens[index];
-  }
-
-  function _addTokenToOwnerEnumeration(address to, uint256 tokenId) private {
-    uint256 length = ERC721.balanceOf(to);
-    _ownedTokens[to][length] = tokenId;
-    _ownedTokensIndex[tokenId] = length;
-  }
-
-  function _addTokenToAllTokensEnumeration(uint256 tokenId) private {
-    _allTokensIndex[tokenId] = _allTokens.length;
-    _allTokens.push(tokenId);
-  }
-
-  function _removeTokenFromOwnerEnumeration(address from, uint256 tokenId)
-    private
-  {
-    uint256 lastTokenIndex = ERC721.balanceOf(from) - 1;
-    uint256 tokenIndex = _ownedTokensIndex[tokenId];
-
-    if (tokenIndex != lastTokenIndex) {
-      uint256 lastTokenId = _ownedTokens[from][lastTokenIndex];
-
-      _ownedTokens[from][tokenIndex] = lastTokenId; // Move the last token to the slot of the to-delete token
-      _ownedTokensIndex[lastTokenId] = tokenIndex; // Update the moved token's index
+    uint256 count;
+    for (uint256 i; i < _minted; i++) {
+      if (_exists(i) && owner == ownerOf(i)) {
+        if (count == index) return i;
+        else count++;
+      }
     }
 
-    delete _ownedTokensIndex[tokenId];
-    delete _ownedTokens[from][lastTokenIndex];
+    revert("ERC721: owner index out of bounds");
   }
 
-  function _removeTokenFromAllTokensEnumeration(uint256 tokenId) private {
-    uint256 lastTokenIndex = _allTokens.length - 1;
-    uint256 tokenIndex = _allTokensIndex[tokenId];
-
-    uint256 lastTokenId = _allTokens[lastTokenIndex];
-
-    _allTokens[tokenIndex] = lastTokenId; // Move the last token to the slot of the to-delete token
-    _allTokensIndex[lastTokenId] = tokenIndex; // Update the moved token's index
-
-    delete _allTokensIndex[tokenId];
-    _allTokens.pop();
+  function _getBatchHead(uint256 tokenId)
+    internal
+    view
+    returns (uint256 tokenIdBatchHead)
+  {
+    tokenIdBatchHead = _batchHead.scanForward(tokenId);
   }
 
   //TOKEN URI
@@ -435,38 +446,32 @@ contract ERC721 is IERC721, ERC165, Ownable {
   {
     if (!_exists(tokenId)) revert TokenDoesNotExist();
 
-    string memory baseURI = _baseURI();
+    string memory baseURI_ = _baseURI();
+
     return
-      bytes(baseURI).length != 0
-        ? string(abi.encodePacked(baseURI, tokenId.toString()))
+      bytes(baseURI_).length != 0
+        ? string(abi.encodePacked(baseURI_, tokenId.toString()))
         : "";
   }
 
   //--------------------------------------------------------------
-  mapping(address => uint256) credit;
-  uint256 dividendPerToken;
-  mapping(address => uint256) xDividendPerToken;
-  event withdrawlMade(address indexed withdrawer, uint256 amount);
-
-  receive() external payable {
-    if (withdrawIsLocked) updateDividendPerToken();
-  }
 
   function updateDividendPerToken() internal {
-    require(totalSupply() != 0, "No tokens minted");
+    if (totalSupply() == 0) revert MintHasNotStarted();
     dividendPerToken += msg.value / totalSupply();
   }
 
   function withdraw() external {
     uint256 holderBalance = balanceOf(_msgSender());
-    require(holderBalance != 0, "DToken: caller possess no shares");
+    if (holderBalance == 0) revert HoldingZeroTokens();
 
     uint256 amount = dividendEarned(msg.sender);
     credit[_msgSender()] = 0;
     xDividendPerToken[_msgSender()] = dividendPerToken;
 
     (bool success, ) = payable(_msgSender()).call{ value: amount }("");
-    require(success, "DToken: Could not withdraw eth");
+
+    if (!success) revert WithdrawlFailed();
     emit withdrawlMade(msg.sender, amount);
   }
 
@@ -485,5 +490,55 @@ contract ERC721 is IERC721, ERC165, Ownable {
     amount += credit[_user];
 
     return amount;
+  }
+
+  /**
+   * @dev Internal function to invoke {IERC721Receiver-onERC721Received} on a target address.
+   * The call is not executed if the target address is not a contract.
+   *
+   * @param from address representing the previous owner of the given token ID
+   * @param to target address that will receive the tokens
+   * @param startTokenId uint256 the first ID of the tokens to be transferred
+   * @param quantity uint256 amount of the tokens to be transfered.
+   * @param _data bytes optional data to send along with the call
+   * @return r bool whether the call correctly returned the expected magic value
+   */
+  function _checkOnERC721Received(
+    address from,
+    address to,
+    uint256 startTokenId,
+    uint256 quantity,
+    bytes memory _data
+  ) private returns (bool r) {
+    if (to.isContract()) {
+      r = true;
+      for (
+        uint256 tokenId = startTokenId;
+        tokenId < startTokenId + quantity;
+        tokenId++
+      ) {
+        try
+          IERC721Receiver(to).onERC721Received(
+            _msgSender(),
+            from,
+            tokenId,
+            _data
+          )
+        returns (bytes4 retval) {
+          r = r && retval == IERC721Receiver.onERC721Received.selector;
+        } catch (bytes memory reason) {
+          if (reason.length == 0) {
+            revert("ERC721: transfer to non ERC721Receiver implementer");
+          } else {
+            assembly {
+              revert(add(32, reason), mload(reason))
+            }
+          }
+        }
+      }
+      return r;
+    } else {
+      return true;
+    }
   }
 }
