@@ -16,40 +16,40 @@ import "./utils/BitMaps.sol";
 
 import "hardhat/console.sol";
 
-// Address(0) is an invalid input
+/// Address(0) is an invalid input
 error InvalidInputZeroAddress();
-// Msg.sender is not approved to spend tokens or is not owner
+/// Msg.sender is not approved to spend tokens or is not owner
 error IsNotApprovedOrOwner();
-// Token doesn't exist
+/// Token doesn't exist
 error TokenDoesNotExist();
-// Token already exists
+/// Token already exists
 error TokenAlreadyExists();
-// Transfer to non ERC721Receiver implementer
+/// Transfer to non ERC721Receiver implementer
 error NonERC721Receiver();
-// Max supply has been reached
+/// Max supply has been reached
 error MaxSupplyReached();
-// Not enough ETH to mint
+/// Not enough ETH to mint
 error NotEnoughETHtoMint();
-// mint is over
+/// Mint is over
 error MintIsOver();
-// Can't Approve to caller
+/// Can't Approve to caller
 error FromCantBeTo();
-// Can't call function twice
+/// Can't call function twice
 error CantCallTwice();
-// Can't Withdraw
+/// Can't Withdraw
 error WithdrawlFailed();
-// Must Mint More then 0
+/// Must Mint More then 0
 error MintLessThan1();
-// No Tokens have been minted
+/// No Tokens have been minted
 error MintHasNotStarted();
-// caller has no tokens
+/// caller has no tokens
 error HoldingZeroTokens();
 
 /** @author Ebrahim Elbagory
- *  @title Homemade ERC721
+ *  @title  Homemade ERC721
  *  @notice Ethereum Dividends from potential collected royalities
  *  @notice Set Royalty Reciever address as token address on exchange (Opensea)
- *  @dev Gas Optimiziation using Bitmaps for minting and transfers
+ *  @dev    Gas Optimiziation using Bitmaps for minting and transfers
  */
 
 contract ERC721 is
@@ -63,12 +63,8 @@ contract ERC721 is
   using Strings for uint256;
   using BitMaps for BitMaps.BitMap;
 
+  //
   BitMaps.BitMap private _batchHead;
-
-  //dividen var
-  mapping(address => uint256) credit;
-  uint256 dividendPerToken;
-  mapping(address => uint256) xDividendPerToken;
 
   string private _name;
   string private _symbol;
@@ -77,6 +73,12 @@ contract ERC721 is
   //price per nft
   uint256 private immutable _pricePerToken = 1e17;
   bool internal withdrawIsLocked;
+  uint256 dividendPerToken;
+  // Dividend Per token per user
+  mapping(address => uint256) xDividendPerToken;
+  //
+  mapping(address => uint256) credit;
+ 
 
   // Mapping from token ID to owner address
   mapping(uint256 => address) private _owners;
@@ -88,7 +90,10 @@ contract ERC721 is
   // Mapping from owner to operator approvals
   mapping(address => mapping(address => bool)) private _operatorApprovals;
 
+  // Owner withdraws revenue from mint and locks contract
   event WithdrawAndLock(bool _withdrawAndLock);
+  
+  // A holder has withdrawn their dividends
   event withdrawlMade(address indexed withdrawer, uint256 amount);
 
   receive() external payable {
@@ -285,6 +290,13 @@ contract ERC721 is
     _approve(operator, tokenId);
   }
 
+  /**
+   *  @dev Gives permission to `operator` to transfer all of senders tokens to another account.
+   *  @dev The approval is cleared when the token is transferred.
+   *  @dev Only a single account can be approved at a time, so approving the zero address clears previous approvals.
+   *  @param operator the address that the permissions will be granted to
+   *  @param approved if the operator should have permissions or not
+   */
   function setApprovalForAll(address operator, bool approved)
     public
     virtual
@@ -295,7 +307,10 @@ contract ERC721 is
     _operatorApprovals[_msgSender()][operator] = approved;
     emit ApprovalForAll(_msgSender(), operator, approved);
   }
-
+  /**
+   * @notice Returns the account approved for `tokenId` token.
+   * @dev TokenId must exist
+   */
   function getApproved(uint256 tokenId)
     public
     view
@@ -308,9 +323,19 @@ contract ERC721 is
     return _tokenApprovals[tokenId];
   }
 
+ /**
+  * @dev Returns whether `tokenId` exists.
+  */
   function _exists(uint256 tokenId) internal view virtual returns (bool) {
     return tokenId < _minted;
-  }
+  }   
+  
+  /**
+   * @dev Transfers `tokenId` from `from` to `to`.
+   *  As opposed to {transferFrom}, this imposes no restrictions on msg.sender.
+   *
+   */
+
 
   function _safeTransfer(
     address from,
@@ -322,6 +347,7 @@ contract ERC721 is
     if (!_checkOnERC721Received(from, to, tokenId, 1, data))
       revert NonERC721Receiver();
   }
+
 
   function _transfer(
     address from,
@@ -355,6 +381,9 @@ contract ERC721 is
     _afterTokenTransfer(from, to, tokenId, 1);
   }
 
+  /**
+   * @return boolen if the `operator` is allowed to manage all of the assets of `owner`.
+   */
   function isApprovedForAll(address owner, address operator)
     public
     view
@@ -365,6 +394,9 @@ contract ERC721 is
     return _operatorApprovals[owner][operator];
   }
 
+  /**
+   * @return boolen if `spender` is approved to spend `tokenId` or if owner of `tokenId`
+   */
   function _isApprovedOrOwner(address spender, uint256 tokenId)
     internal
     view
@@ -377,7 +409,12 @@ contract ERC721 is
       getApproved(tokenId) == spender ||
       isApprovedForAll(owner, spender));
   }
-
+    /**
+     * @dev Approve `operator` to operate on all of `owner` tokens
+     * @param owner The owner of the tokens that are being approved to be spent
+     * @param operator The address that will be able to spend the tokens
+     * @param approved If the operator should be allowed to spend the tokens or not
+     */
   function _setApprovalForAll(
     address owner,
     address operator,
@@ -386,6 +423,13 @@ contract ERC721 is
     if (owner == operator) revert FromCantBeTo();
     _operatorApprovals[owner][operator] = approved;
     emit ApprovalForAll(owner, operator, approved);
+  }
+  /**
+   * @dev Approve `to` to operate on `tokenId`
+   */
+  function _approve(address to, uint256 tokenId) internal virtual {
+    _tokenApprovals[tokenId] = to;
+    emit Approval(ownerOf(tokenId), to, tokenId);
   }
 
   function _safeMint(address to, uint256 quantity) internal virtual {
@@ -425,6 +469,13 @@ contract ERC721 is
     }
   }
 
+  /**
+   * @dev Hook that is called after a set of serially-ordered token ids are about to be transferred. This includes minting and burning.
+   * @param from the owner of the token(s)
+   * @param to the recipient of the token(s)
+   * @param startTokenId the first token id to be transferred
+   * @param quantity the amount to be transferred
+   */
   function _afterTokenTransfer(
     address from,
     address to,
@@ -432,28 +483,37 @@ contract ERC721 is
     uint256 quantity
   ) internal virtual {}
 
+  /**
+   * @dev Hook that is called before a set of serially-ordered token ids are about to be transferred. This includes minting and burning.
+   * @dev Reverts if from or to is address(0) To burn tokens send to different address (0x000000000000000000000000000000000000dEaD)
+   * @param from the owner of the token(s)
+   * @param to the recipient of the token(s)
+   * @param startTokenId the first token id to be transferred
+   * @param quantity the amount to be transferred
+   */
+
   function _beforeTokenTransfer(
     address from,
     address to,
     uint256 startTokenId,
     uint256 quantity
-  ) internal virtual {}
-
-  function _approve(address to, uint256 tokenId) internal virtual {
-    _tokenApprovals[tokenId] = to;
-    emit Approval(ownerOf(tokenId), to, tokenId);
+  ) internal virtual {
+    if(from == address (0) || to == address(0)) return;
+    _withdrawToCredit(to);
+    _withdrawToCredit(from);
   }
 
   // ENUMERATION
   /**
-   * @dev See {IERC721Enumerable-totalSupply}.
+   * @dev Returns the total amount of tokens stored by the contract.
    */
   function totalSupply() public view virtual override returns (uint256) {
     return _minted;
   }
 
   /**
-   * @dev See {IERC721Enumerable-tokenByIndex}.
+   * @dev Returns a token ID at a given `index` of all the tokens stored by the contract.
+   * Use along with {totalSupply} to enumerate all tokens.
    */
   function tokenByIndex(uint256 index)
     public
@@ -472,7 +532,8 @@ contract ERC721 is
   }
 
   /**
-   * @dev See {IERC721Enumerable-tokenOfOwnerByIndex}.
+   * @dev Returns a token ID owned by `owner` at a given `index` of its token list.
+   * Use along with {balanceOf} to enumerate all of ``owner``'s tokens.
    */
   function tokenOfOwnerByIndex(address owner, uint256 index)
     public
@@ -491,6 +552,9 @@ contract ERC721 is
     revert("ERC721: owner index out of bounds");
   }
 
+  /**
+   * @dev Returns the batch head where the token information is stored
+   */
   function _getBatchHead(uint256 tokenId)
     internal
     view
@@ -499,16 +563,21 @@ contract ERC721 is
     tokenIdBatchHead = _batchHead.scanForward(tokenId);
   }
 
-  //TOKEN URI
-
+  /**
+   * @dev See _baseURI() 
+   */
   function baseURI() public view returns (string memory) {
     return _baseURI();
   }
-
+  /**
+   * @dev Returns the baseURI for the collection
+   */
   function _baseURI() internal view virtual returns (string memory) {
     return _baseTokenURI;
   }
-
+  /**
+   * @dev Returns the individual token URI for `tokenId`
+   */
   function tokenURI(uint256 tokenId)
     public
     view
@@ -525,13 +594,17 @@ contract ERC721 is
         : "";
   }
 
-  //--------------------------------------------------------------
-
+  /**
+   * @dev Updates the Dividen Per Token everytime eth is sent to the contract
+   */
   function updateDividendPerToken() internal {
     if (totalSupply() == 0) revert MintHasNotStarted();
     dividendPerToken += msg.value / totalSupply();
   }
 
+  /**
+   * @dev Allows holders to withdraw their dividends
+   */
   function withdraw() external {
     uint256 holderBalance = balanceOf(_msgSender());
     if (holderBalance == 0) revert HoldingZeroTokens();
@@ -546,6 +619,9 @@ contract ERC721 is
     emit withdrawlMade(msg.sender, amount);
   }
 
+  /**
+   * @dev Records dividends to address upon transfer
+   */
   function _withdrawToCredit(address to_) private {
     uint256 recipientBalance = balanceOf(to_);
     uint256 amount = (dividendPerToken - xDividendPerToken[to_]) *
@@ -553,7 +629,11 @@ contract ERC721 is
     credit[to_] += amount;
     xDividendPerToken[to_] = dividendPerToken;
   }
-
+  /**
+   * @dev Returns the dividends earned of the `_user`
+   * @param _user User address to query
+   * @return amount Dividends earned in eth
+   */
   function dividendEarned(address _user) public view returns (uint256) {
     uint256 holderBalance = balanceOf(_user);
     uint256 amount = ((dividendPerToken - xDividendPerToken[_user]) *
