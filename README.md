@@ -71,7 +71,7 @@ While this contract is unique, there are some missing features that it would nee
 - Permits to allow for zero gas approvals
 - Support for ERC20 dividends
 
-### Cool addition
+### Cool additions
 
 - An Affilate Minting feature
 
