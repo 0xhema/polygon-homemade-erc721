@@ -63,23 +63,27 @@ contract ERC721 is
   using Strings for uint256;
   using BitMaps for BitMaps.BitMap;
 
-  //
+  //Batch Heads for Bitmap
   BitMaps.BitMap private _batchHead;
 
+  // Name of token 
   string private _name;
+  // Symbol of Token
   string private _symbol;
+  // Base URI for token 
   string private _baseTokenURI;
+  // The maximum tokens someone can mint at a time
   uint8 private immutable _maxMint;
-  //price per nft
+  // The cost per token at mint
   uint256 private immutable _pricePerToken = 1e17;
+  // If the revenue of mint has been withdrawn and the contract has been locked
   bool internal withdrawIsLocked;
+  // The dividend that should be paid per token 
   uint256 dividendPerToken;
   // Dividend Per token per user
   mapping(address => uint256) xDividendPerToken;
-  //
+  // The amount of credit that a user has accumulated
   mapping(address => uint256) credit;
- 
-
   // Mapping from token ID to owner address
   mapping(uint256 => address) private _owners;
   uint256 internal _minted;
@@ -90,12 +94,20 @@ contract ERC721 is
   // Mapping from owner to operator approvals
   mapping(address => mapping(address => bool)) private _operatorApprovals;
 
-  // Owner withdraws revenue from mint and locks contract
+ /**
+  * @dev Emitted when owner withdraws revenue from mint and locks contract
+  */
   event WithdrawAndLock(bool _withdrawAndLock);
   
-  // A holder has withdrawn their dividends
+ /**
+  * @dev Emitted when `withdrawer` withdraws the `amount` of dividends earned
+  */
   event withdrawlMade(address indexed withdrawer, uint256 amount);
 
+  /** 
+  * @notice executes on calls to the contract with no data (send(), transfer(), etc)
+  * @dev If the contract has been withdrawn and locked then it will update the dividen per token when it recieves eth
+  */
   receive() external payable {
     if (withdrawIsLocked) updateDividendPerToken();
   }
@@ -118,22 +130,30 @@ contract ERC721 is
     _maxMint = maxMint_;
   }
 
-  /// @return name of collection as a string
+   /**
+   * @return name of collection as a string
+   */
   function name() public view returns (string memory) {
     return _name;
   }
 
-  /// @return symbol of collection as a string
+  /**
+   * @return symbol of collection as a string
+   */
   function symbol() public view returns (string memory) {
     return _symbol;
   }
 
-  /// @return maximum amount of tokens a user is allowed to mint at time
+   /**  
+   *  @return maximum amount of tokens a user is allowed to mint at time
+   */
   function maxMint() public view returns (uint8) {
     return _maxMint;
   }
 
-  /// @return price per token that each user is minting
+  /**  
+   *   @return price per token that each user is minting
+   */
   function pricePerToken() public pure returns (uint256) {
     return _pricePerToken;
   }
@@ -330,13 +350,9 @@ contract ERC721 is
     return tokenId < _minted;
   }   
   
-  /**
-   * @dev Transfers `tokenId` from `from` to `to`.
-   *  As opposed to {transferFrom}, this imposes no restrictions on msg.sender.
-   *
-   */
-
-
+ /** 
+ * @dev See safeTransferFrom()
+ */
   function _safeTransfer(
     address from,
     address to,
@@ -348,7 +364,9 @@ contract ERC721 is
       revert NonERC721Receiver();
   }
 
-
+  /** 
+ * @dev See transferFrom()
+ */
   function _transfer(
     address from,
     address to,
@@ -432,10 +450,15 @@ contract ERC721 is
     emit Approval(ownerOf(tokenId), to, tokenId);
   }
 
+  /** 
+ * @dev See mint()
+ */
   function _safeMint(address to, uint256 quantity) internal virtual {
     _safeMint(to, quantity, "");
   }
-
+ /** 
+  * @dev See mint()
+  */
   function _safeMint(
     address to,
     uint256 quantity,
@@ -446,7 +469,9 @@ contract ERC721 is
     if (!_checkOnERC721Received(address(0), to, startTokenId, quantity, _data))
       revert NonERC721Receiver();
   }
-
+  /** 
+   * @dev See mint()
+   */
   function _mint(address to, uint256 quantity) internal virtual {
     uint256 tokenIdBatchHead = _minted;
 
