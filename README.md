@@ -80,3 +80,4 @@ While this contract is unique, there are some missing features that it would nee
 
 - The dividend distribution accounts for ethereum being sent to the contract. Opensea and other exchanges can distribute royalties by sending eth but they also distribute royalties in WETH and other ERC20 tokens. <ins><b>This contract does NOT take this into account</b></ins>. The contract would need the added feature of communicating with a DEX to swap the tokens that are sent to it for ETH. 
 - To burn tokens you would need to send to the DeAD address, not the zero address.
+- <ins><b>This contract is not audited </b></ins> Do not use in production 
