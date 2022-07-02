@@ -3,6 +3,7 @@
 //
 // When running the script with `npx hardhat run <script>` you'll find the Hardhat
 // Runtime Environment's members available in the global scope.
+
 const hre = require("hardhat");
 
 async function main() {
@@ -13,13 +14,25 @@ async function main() {
   // manually to make sure everything is compiled
   // await hre.run('compile');
 
-  // We get the contract to deploy
-  const Greeter = await hre.ethers.getContractFactory("Greeter");
-  const greeter = await Greeter.deploy("Hello, Hardhat!");
+  let name = "TestToken";
+  let symbol = "test";
+  let baseURI = "https://ipfs/test/";
+  let maxMint = 5;
 
-  await greeter.deployed();
+  // // We get the contract to deploy
+  const ERC721 = await hre.ethers.getContractFactory("ERC721");
+  const erc721 = await ERC721.deploy(name, symbol, baseURI, maxMint);
 
-  console.log("Greeter deployed to:", greeter.address);
+  await erc721.deployed();
+
+  console.log("ERC721 deployed to:", erc721.address);
+
+  console.log("Now Verifiying Contract");
+
+  await hre.run("verify:verify", {
+    address: erc721.address,
+    constructorArguments: [name, symbol, baseURI, maxMint],
+  });
 }
 
 // We recommend this pattern to be able to use async/await everywhere

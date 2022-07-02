@@ -154,6 +154,7 @@ describe("ERC721 Refactored - Minting Gas Optimization - Test 4", function () {
     expect(await erc721.ownerOf("24")).to.be.equal(account4.address);
     expect(await erc721.totalSupply()).to.be.equal(25);
   });
+
   it("Should revert state", async function () {
     await hre.network.provider.request({
       method: "evm_revert",
