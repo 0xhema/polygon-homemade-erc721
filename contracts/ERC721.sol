@@ -45,8 +45,13 @@ error MintHasNotStarted();
 // caller has no tokens
 error HoldingZeroTokens();
 
-/// @author Ebrahim Elbagory
-/// @title ERC721
+/** @author Ebrahim Elbagory
+ *  @title Homemade ERC721
+ *  @notice Ethereum Dividends from potential collected royalities
+ *  @notice Set Royalty Reciever address as token address on exchange (Opensea)
+ *  @dev Gas Optimiziation using Bitmaps for minting and transfers
+ */
+
 contract ERC721 is
   IERC721,
   ERC165,
@@ -90,6 +95,12 @@ contract ERC721 is
     if (withdrawIsLocked) updateDividendPerToken();
   }
 
+  /** @notice initializes contract
+   *  @param name_ token name
+   *  @param symbol_ token symbol
+   *  @param baseTokenURI_ token URI I.E. https://ipfs/test/
+   *  @param maxMint_ Max mint allowed per user I.E. 10
+   */
   constructor(
     string memory name_,
     string memory symbol_,
@@ -102,13 +113,29 @@ contract ERC721 is
     _maxMint = maxMint_;
   }
 
+  /// @return name of collection as a string
   function name() public view returns (string memory) {
     return _name;
   }
 
+  /// @return symbol of collection as a string
   function symbol() public view returns (string memory) {
     return _symbol;
   }
+
+  /// @return maximum amount of tokens a user is allowed to mint at time
+  function maxMint() public view returns (uint8) {
+    return _maxMint;
+  }
+
+  /// @return price per token that each user is minting
+  function pricePerToken() public pure returns (uint256) {
+    return _pricePerToken;
+  }
+
+  /**  @return balance of owner as a uint256
+   *   @param owner address of user you are checking
+   */
 
   function balanceOf(address owner)
     public
@@ -129,6 +156,11 @@ contract ERC721 is
     return count;
   }
 
+  /** @notice Withdraws ethereum collected in token minting
+   *  @dev only allows owner to call function
+   *  @dev only allows owner to call the function a single time (to protect user dividends)
+   *  @dev users will not be able to mint anymore tokens after
+   */
   function withdrawAndLock() external onlyOwner {
     if (withdrawIsLocked) revert CantCallTwice();
     withdrawIsLocked = true;
@@ -136,6 +168,25 @@ contract ERC721 is
     emit WithdrawAndLock(withdrawIsLocked);
   }
 
+  /** @notice allow for public to mint tokens
+   *  @param _numberOfTokens number of tokens to mint
+   *  @dev reverts if user is not sending enough ethereum
+   *  @dev reverts if user is attempting to mint over the maximum tokens
+   *  @dev users will not be able to mint anymore tokens after owner has withdrawn and locked contract
+   */
+  function mint(uint256 _numberOfTokens) public payable {
+    if (_numberOfTokens > _maxMint) revert MaxSupplyReached();
+    if (msg.value < (_pricePerToken * _numberOfTokens))
+      revert NotEnoughETHtoMint();
+    if (withdrawIsLocked) revert MintIsOver();
+
+    _withdrawToCredit(msg.sender);
+    _safeMint(msg.sender, _numberOfTokens);
+  }
+
+  /** @param tokenId This is the token id of the owner you want to find
+   *  @return address of inputed token id's owner
+   */
   function ownerOf(uint256 tokenId)
     public
     view
@@ -147,6 +198,11 @@ contract ERC721 is
     return owner;
   }
 
+  /** @notice internal function that is used by bitmap data structure for gas optimization
+   *  @param tokenId that is being queried
+   *  @return owner of inputed token id's owner
+   *  @return tokenIdBatchHead of the token (location of token data in bitmap data structure)
+   */
   function _ownerAndBatchHeadOf(uint256 tokenId)
     internal
     view
@@ -157,14 +213,14 @@ contract ERC721 is
     owner = _owners[tokenIdBatchHead];
   }
 
-  function maxMint() public view returns (uint8) {
-    return _maxMint;
-  }
-
-  function pricePerToken() public pure returns (uint256) {
-    return _pricePerToken;
-  }
-
+  /** @notice Safely transfers `tokenId` token from `from` to `to`
+   *  @dev if receipient is contract, it must implement IERC721Receiver-onERC721Received
+   *  @dev overloaded function
+   *  @dev checks if user is owner or approved to spend tokens
+   *  @param from token owner
+   *  @param to token recipient
+   *  @param tokenId the token that is being transfer
+   */
   function safeTransferFrom(
     address from,
     address to,
@@ -173,15 +229,16 @@ contract ERC721 is
     safeTransferFrom(from, to, tokenId, "");
   }
 
-  function mint(uint256 _numToMint) public payable {
-    if (_numToMint > _maxMint) revert MaxSupplyReached();
-    if (msg.value < (_pricePerToken * _numToMint)) revert NotEnoughETHtoMint();
-    if (withdrawIsLocked) revert MintIsOver();
-
-    _withdrawToCredit(msg.sender);
-    _safeMint(msg.sender, _numToMint);
-  }
-
+  /** @notice Safely transfers `tokenId` token from `from` to `to`
+   *  @notice To can't be zero address or be same as from
+   *  @dev checks if receipient is ERC721Receiver implementor
+   *  @dev overloaded function
+   *  @dev checks if user is owner or approved to spend tokens
+   *  @param from token owner
+   *  @param to token recipient
+   *  @param tokenId the token that is being transfer
+   *  @param data I.E ""
+   */
   function safeTransferFrom(
     address from,
     address to,
@@ -194,6 +251,13 @@ contract ERC721 is
     _safeTransfer(from, to, tokenId, data);
   }
 
+  /** @notice Transfers `tokenId` token from `from` to `to`
+   *  @dev Usage of this method is discouraged, use {safeTransferFrom} whenever possible.
+   *  @dev checks if user is owner or approved to spend tokens
+   *  @param from token owner
+   *  @param to token recipient
+   *  @param tokenId the token that is being transfer
+   */
   function transferFrom(
     address from,
     address to,
@@ -204,6 +268,13 @@ contract ERC721 is
     _transfer(from, to, tokenId);
   }
 
+  /**
+   *  @dev Gives permission to `to` to transfer `tokenId` token to another account.
+   *  @dev The approval is cleared when the token is transferred.
+   *  @dev Only a single account can be approved at a time, so approving the zero address clears previous approvals.
+   *  @param operator token owner
+   *  @param tokenId the token that is being gi
+   */
   function approve(address operator, uint256 tokenId) public virtual override {
     address owner = ownerOf(tokenId);
     if (operator == _msgSender()) revert FromCantBeTo();
