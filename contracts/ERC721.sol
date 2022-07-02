@@ -160,6 +160,7 @@ contract ERC721 is
     return _name;
   }
 
+
   /**
    * @return symbol of collection as a string
    */
@@ -179,6 +180,12 @@ contract ERC721 is
    */
   function pricePerToken() public pure returns (uint256) {
     return _pricePerToken;
+  }
+  /**  
+   *   @notice Allows owner to set a new BASEURI for the 'reveal' stage of an nft launch
+   */
+    function setBaseURI(string memory _newBaseUrI) external onlyOwner {
+    _baseTokenURI = _newBaseUrI;
   }
 
   /**  @return balance of owner as a uint256
